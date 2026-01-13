@@ -153,6 +153,9 @@ namespace UniversalFearRPC
         private static IntPtr healthAddress = IntPtr.Zero;
         private static IntPtr deathCountAddress = IntPtr.Zero;
 
+        // Обёртка для чтения памяти
+        private static MemoryReader memoryReader = null;
+
         // Игровое состояние
         private static string currentLevel = "";
         private static float currentHealth = 100f;
@@ -965,6 +968,9 @@ namespace UniversalFearRPC
                 LogSuccess($"Присоединено к {gameProcess.ProcessName} [PID: {gameProcess.Id}]");
                 LogInfo($"Базовый адрес: {FormatAddress(baseAddress)}");
                 LogInfo($"Версия игры: {currentGameVersion}, Мультиплеер: {isMultiplayer}");
+
+                // Инициализируем MemoryReader для дальнейших чтений памяти
+                memoryReader = new MemoryReader(hProcess, baseAddress);
 
                 return true;
             }
@@ -1988,12 +1994,14 @@ namespace UniversalFearRPC
 
         static void Cleanup()
         {
-            if (hProcess != IntPtr.Zero)
+            // Освобождаем MemoryReader (закрывает хэндл при необходимости)
+            if (memoryReader != null)
             {
-                CloseHandle(hProcess);
-                hProcess = IntPtr.Zero;
+                memoryReader.Dispose();
+                memoryReader = null;
             }
 
+            hProcess = IntPtr.Zero;
             gameProcess = null;
             baseAddress = IntPtr.Zero;
             levelAddress = IntPtr.Zero;
