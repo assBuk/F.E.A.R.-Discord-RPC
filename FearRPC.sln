@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FearRPC", "FearRPC.csproj", "{4E2D97D5-29C9-4686-A7AB-EA3083A565BA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FearRPC.Tests", "tests\FearRPC.Tests\FearRPC.Tests.csproj", "{B5F8A1E5-3C2D-4F33-8A7F-0A1B2C3D4E5F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{4E2D97D5-29C9-4686-A7AB-EA3083A565BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4E2D97D5-29C9-4686-A7AB-EA3083A565BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4E2D97D5-29C9-4686-A7AB-EA3083A565BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B5F8A1E5-3C2D-4F33-8A7F-0A1B2C3D4E5F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B5F8A1E5-3C2D-4F33-8A7F-0A1B2C3D4E5F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B5F8A1E5-3C2D-4F33-8A7F-0A1B2C3D4E5F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B5F8A1E5-3C2D-4F33-8A7F-0A1B2C3D4E5F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
