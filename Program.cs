@@ -1032,7 +1032,10 @@ namespace UniversalFearRPC
 
             // Метод 3: Хардкод оффсет (последний вариант)
             IntPtr testAddr = IntPtr.Add(baseAddress, 0x16C045);
-            string testLevel = ReadString(testAddr, MAX_LEVEL_NAME_LENGTH, Encoding.ASCII);
+            string testLevel = memoryReader != null
+                ? memoryReader.ReadString(testAddr, MAX_LEVEL_NAME_LENGTH, Encoding.ASCII)
+                : ReadString(testAddr, MAX_LEVEL_NAME_LENGTH, Encoding.ASCII);
+
             if (!string.IsNullOrEmpty(testLevel) && testLevel.Contains(".World"))
             {
                 LogSuccess($"Уровень по статическому оффсету 0x16C045: {testLevel}");
@@ -1066,7 +1069,7 @@ namespace UniversalFearRPC
                 IntPtr healthPtr = FollowPointerChain(chain);
                 if (healthPtr != IntPtr.Zero)
                 {
-                    float health = ReadFloat(healthPtr);
+                    float health = memoryReader != null ? memoryReader.ReadFloat(healthPtr) : ReadFloat(healthPtr);
                     float healthMin = GetCurrentHealthMin();
                     float healthMax = GetCurrentHealthMax();
 
@@ -1145,6 +1148,12 @@ namespace UniversalFearRPC
         {
             LogInfo("Сканирование памяти на наличие здоровья...");
 
+            float healthMin = GetCurrentHealthMin();
+            float healthMax = GetCurrentHealthMax();
+
+            if (memoryReader != null)
+                return memoryReader.ScanForHealthPattern(healthMin, healthMax);
+
             // Сканируем 2MB памяти от базового адреса
             const int SCAN_SIZE = 0x200000;
             byte[] buffer = new byte[SCAN_SIZE];
@@ -1152,9 +1161,6 @@ namespace UniversalFearRPC
 
             if (!ReadProcessMemory(hProcess, baseAddress, buffer, SCAN_SIZE, out bytesRead))
                 return IntPtr.Zero;
-
-            float healthMin = GetCurrentHealthMin();
-            float healthMax = GetCurrentHealthMax();
 
             // Ищем значения float в диапазоне здоровья
             for (int i = 0; i <= bytesRead - 4; i += 4)
@@ -1180,6 +1186,9 @@ namespace UniversalFearRPC
 
         static IntPtr ScanForDeathCount()
         {
+            if (memoryReader != null)
+                return memoryReader.ScanForDeathCount();
+
             const int SCAN_SIZE = 0x100000;
             byte[] buffer = new byte[SCAN_SIZE];
             int bytesRead;
@@ -1204,6 +1213,9 @@ namespace UniversalFearRPC
 
         static IntPtr ScanForLevelString()
         {
+            if (memoryReader != null)
+                return memoryReader.ScanForLevelString(LEVEL_PATTERNS);
+
             const int SCAN_SIZE = 0x100000;
             byte[] buffer = new byte[SCAN_SIZE];
             int bytesRead;
@@ -1251,6 +1263,9 @@ namespace UniversalFearRPC
 
         static IntPtr ScanMemoryForPattern(byte[] pattern, int startOffset, int size)
         {
+            if (memoryReader != null)
+                return memoryReader.ScanMemoryForPattern(pattern, startOffset, size);
+
             byte[] buffer = new byte[size];
             int bytesRead;
 
@@ -1351,6 +1366,9 @@ namespace UniversalFearRPC
         /// </summary>
         static byte[] ReadBytes(IntPtr address, int size)
         {
+            if (memoryReader != null)
+                return memoryReader.ReadBytes(address, size);
+
             if (address == IntPtr.Zero || hProcess == IntPtr.Zero || size <= 0)
                 return null;
 
@@ -1407,6 +1425,9 @@ namespace UniversalFearRPC
 
         static string ReadString(IntPtr address, int maxLength, Encoding encoding)
         {
+            if (memoryReader != null)
+                return memoryReader.ReadString(address, maxLength, encoding);
+
             if (address == IntPtr.Zero)
                 return string.Empty;
 
@@ -1421,6 +1442,9 @@ namespace UniversalFearRPC
 
         static float ReadFloat(IntPtr address)
         {
+            if (memoryReader != null)
+                return memoryReader.ReadFloat(address);
+
             if (address == IntPtr.Zero)
                 return 0f;
 
@@ -1433,6 +1457,9 @@ namespace UniversalFearRPC
 
         static int ReadInt(IntPtr address)
         {
+            if (memoryReader != null)
+                return memoryReader.ReadInt(address);
+
             if (address == IntPtr.Zero)
                 return 0;
 
@@ -2106,11 +2133,14 @@ namespace UniversalFearRPC
                 discordClient.Dispose();
             }
 
-            // Закрываем хэндл процесса
-            if (hProcess != IntPtr.Zero)
+            // Освобождаем чтение памяти (MemoryReader закроет хэндл)
+            if (memoryReader != null)
             {
-                CloseHandle(hProcess);
+                memoryReader.Dispose();
+                memoryReader = null;
             }
+
+            hProcess = IntPtr.Zero;
 
             LogInfo("Ресурсы освобождены. До свидания!");
         }
