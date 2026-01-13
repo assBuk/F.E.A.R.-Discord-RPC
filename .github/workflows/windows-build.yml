@@ -1,0 +1,26 @@
+name: Build and Test (Windows .NET Framework)
+
+on:
+  push:
+    branches: [ 'refactor/readability-structure', 'main' ]
+  pull_request:
+    branches: [ 'main' ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v1
+
+      - name: Restore NuGet packages
+        run: nuget restore FearRPC.sln
+
+      - name: Build solution (Release)
+        run: msbuild FearRPC.sln /p:Configuration=Release /t:Build
+
+      - name: Run tests
+        run: dotnet test tests/FearRPC.Tests/FearRPC.Tests.csproj --configuration Release --no-build
