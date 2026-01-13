@@ -27,6 +27,8 @@ namespace UniversalFearRPC
         private const string SESSION_FILE = "Session.dat";
         private const string STATS_FILE = "GameStats.log";
         private const string MENU_LABEL = "Меню";
+        private const string SEARCHING_GAME_TEXT = "Поиск игры...";
+        private const string READ_ERROR_TEXT = "Ошибка чтения";
         #endregion
         private static readonly string[] LEVEL_PATTERNS = { ".World00p", ".World", "Intro", "Docks" };
 
@@ -165,6 +167,7 @@ namespace UniversalFearRPC
         private static DateTime processStartTime = DateTime.MinValue;
         private static string currentGameVersion = "FEAR";
 
+        #region Windows API
         // ================= WINDOWS API =================
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
@@ -189,7 +192,9 @@ namespace UniversalFearRPC
         private const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
         private const int PROCESS_VM_READ = 0x0010;
         private const int PROCESS_QUERY_INFORMATION = 0x0400;
+        #endregion
 
+        #region Main
         // ================= MAIN =================
         static void Main(string[] args)
         {
@@ -231,6 +236,7 @@ namespace UniversalFearRPC
                 }
             }
         }
+        #endregion
 
         // ================= УПРАВЛЕНИЕ КОНФИГУРАЦИЕЙ =================
         static void LoadConfiguration()
@@ -852,6 +858,9 @@ namespace UniversalFearRPC
 
 
         // ================= ПОИСК И ПРИСОЕДИНЕНИЕ К ПРОЦЕССУ =================
+        /// <summary>
+        /// Проверяет, запущен ли один из процессов игры (из настроек) и обновляет состояние.
+        /// </summary>
         static bool FindGameProcess()
         {
             Process targetProcess = null;
@@ -915,6 +924,9 @@ namespace UniversalFearRPC
             return gameProcess != null;
         }
 
+        /// <summary>
+        /// Пытается открыть хэндл процесса и получить базовый адрес модуля.
+        /// </summary>
         static bool AttachToProcess()
         {
             if (gameProcess == null || gameProcess.HasExited)
@@ -963,7 +975,7 @@ namespace UniversalFearRPC
                 hProcess = IntPtr.Zero;
                 return false;
             }
-        }
+        }]}]}null)```}]}]}]}}]}]}]}]
 
         // ================= АВТООПРЕДЕЛЕНИЕ АДРЕСОВ =================
         static void UniversalAutoDetect()
@@ -1265,7 +1277,7 @@ namespace UniversalFearRPC
         static string ReadLevelName()
         {
             if (hProcess == IntPtr.Zero || levelAddress == IntPtr.Zero)
-                return "Поиск игры...";
+                return SEARCHING_GAME_TEXT;
 
             try
             {
@@ -1286,7 +1298,7 @@ namespace UniversalFearRPC
                     failedReads = 0;
                 }
 
-                return "Ошибка чтения";
+                return READ_ERROR_TEXT;
             }
         }
 
@@ -1326,6 +1338,7 @@ namespace UniversalFearRPC
             }
         }
 
+        #region Чтение памяти
         /// <summary>
         /// Читает сырые байты из целевого процесса.
         /// Возвращает null при ошибке.
@@ -1423,6 +1436,7 @@ namespace UniversalFearRPC
 
             return BitConverter.ToInt32(bytes, 0);
         }
+        #endregion
 
         // ================= ОБРАБОТКА ИГРОВЫХ ДАННЫХ =================
         static string lastLevel = "";
@@ -1538,6 +1552,7 @@ namespace UniversalFearRPC
             }
         }
 
+        #region Discord Status
         // ================= DISCORD STATUS =================
         static void UpdateDiscordStatus(string levelName, float health, int deaths)
         {
@@ -1756,6 +1771,7 @@ namespace UniversalFearRPC
             return baseImage;
         }
 
+        #region Console Display
         // ================= ОТОБРАЖЕНИЕ СТАТУСА =================
         static void DisplayStatus(string level, float health, int deaths)
         {
@@ -1821,8 +1837,13 @@ namespace UniversalFearRPC
                 percent > 30 ? ConsoleColor.Yellow :
                 percent > 0 ? ConsoleColor.Red : ConsoleColor.DarkRed;
         }
+        #endregion
 
+        #region Level Database
         // ================= БАЗА ДАННЫХ УРОВНЕЙ (ПО УМОЛЧАНИЮ) =================
+        /// <summary>
+        /// Создаёт базу уровней по умолчанию для различных эпизодов/демо/тестов.
+        /// </summary>
         static Dictionary<string, LevelInfo> CreateDefaultLevelDatabase()
         {
             var db = new Dictionary<string, LevelInfo>(StringComparer.OrdinalIgnoreCase);
@@ -1922,6 +1943,9 @@ namespace UniversalFearRPC
             return db;
         }
 
+        /// <summary>
+        /// Утилита для добавления уровня в базу данных.
+        /// </summary>
         static void AddLevel(Dictionary<string, LevelInfo> db, string key, int episode,
             string episodeName, string location, string type, string[] aliases)
         {
@@ -1934,6 +1958,7 @@ namespace UniversalFearRPC
                 Aliases = aliases
             };
         }
+        #endregion
 
         // ================= УТИЛИТЫ =================
         static string FormatAddress(IntPtr address)
