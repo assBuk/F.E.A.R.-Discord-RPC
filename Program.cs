@@ -16,6 +16,7 @@ namespace UniversalFearRPC
 {
     internal class Program
     {
+        #region Константы и пути
         // ================= КОНСТАНТЫ КОНФИГУРАЦИИ =================
         private const int MAX_LEVEL_NAME_LENGTH = 128;
         private const int PATTERN_SCAN_RANGE = 0x100000;
@@ -25,11 +26,14 @@ namespace UniversalFearRPC
         private const string SETTINGS_FILE = "Settings.ini";
         private const string SESSION_FILE = "Session.dat";
         private const string STATS_FILE = "GameStats.log";
-
-        // Паттерны для поиска в памяти
+        private const string MENU_LABEL = "Меню";
+        #endregion
         private static readonly string[] LEVEL_PATTERNS = { ".World00p", ".World", "Intro", "Docks" };
 
-        // ================= СТРУКТУРЫ ДАННЫХ =================
+        #region Структуры данных
+        /// <summary>
+        /// Информация об уровне: эпизод, название, локация и алиасы.
+        /// </summary>
         private class LevelInfo
         {
             public int Episode { get; set; }
@@ -39,6 +43,9 @@ namespace UniversalFearRPC
             public string[] Aliases { get; set; }
         }
 
+        /// <summary>
+        /// Описание цепочки указателей (base + offsets) для поиска значений в памяти.
+        /// </summary>
         private class PointerChain
         {
             public IntPtr BaseAddress { get; set; }
@@ -46,6 +53,9 @@ namespace UniversalFearRPC
             public string Description { get; set; }
         }
 
+        /// <summary>
+        /// Сериализуемые данные сессии (для авто-восстановления).
+        /// </summary>
         private class SessionData
         {
             public DateTime GameStartTime { get; set; }
@@ -60,6 +70,9 @@ namespace UniversalFearRPC
             public DateTime ProcessStartTime { get; set; }
         }
 
+        /// <summary>
+        /// Конфигурация приложения, загружаемая из Settings.ini.
+        /// </summary>
         private class AppSettings
         {
             public string DiscordAppId { get; set; } = "1169265821965627492";
@@ -99,6 +112,7 @@ namespace UniversalFearRPC
                 { "Fear3Max", 100 }
             };
         }
+        #endregion
 
         // ================= КОНФИГУРАЦИЯ =================
         private static readonly PointerChain[] HEALTH_POINTER_CHAINS =
@@ -1018,7 +1032,7 @@ namespace UniversalFearRPC
             // Инициализируем базовые адреса для цепочек
             foreach (var chain in HEALTH_POINTER_CHAINS)
             {
-                // Устанавливаем базовый адрес для этой цепочки
+                // Устанавливаем базовый адрес для этой цепочки (подсказка из описания)
                 if (chain.Description.Contains("03ACC"))
                     chain.BaseAddress = IntPtr.Add(baseAddress, 0x03ACC);
                 else if (chain.Description.Contains("04654"))
@@ -1027,9 +1041,7 @@ namespace UniversalFearRPC
                     chain.BaseAddress = IntPtr.Add(baseAddress, 0x0894C);
                 else if (chain.Description.Contains("13628"))
                     chain.BaseAddress = IntPtr.Add(baseAddress, 0x13628);
-                if (chain.Description.Contains("21007F"))
-                    chain.BaseAddress = IntPtr.Add(baseAddress, 0x21007F);
-                if (chain.Description.Contains("21007F"))
+                else if (chain.Description.Contains("21007F"))
                     chain.BaseAddress = IntPtr.Add(baseAddress, 0x21007F);
 
                 // Пробуем прочитать по цепочке
@@ -1061,22 +1073,19 @@ namespace UniversalFearRPC
             try
             {
                 IntPtr currentAddress = chain.BaseAddress;
+                int pointerSize = IntPtr.Size;
 
                 for (int i = 0; i < chain.Offsets.Length; i++)
                 {
-                    // Читаем значение указателя
-                    byte[] buffer = new byte[4];
-                    int bytesRead;
-
-                    if (!ReadProcessMemory(hProcess, currentAddress, buffer, 4, out bytesRead) || bytesRead != 4)
+                    var buffer = ReadBytes(currentAddress, pointerSize);
+                    if (buffer == null || buffer.Length < pointerSize)
                         return IntPtr.Zero;
 
-                    int nextAddress = BitConverter.ToInt32(buffer, 0);
-                    if (nextAddress == 0)
+                    long nextAddr = pointerSize == 8 ? BitConverter.ToInt64(buffer, 0) : BitConverter.ToInt32(buffer, 0);
+                    if (nextAddr == 0)
                         return IntPtr.Zero;
 
-                    // Добавляем смещение
-                    currentAddress = new IntPtr(nextAddress + chain.Offsets[i]);
+                    currentAddress = new IntPtr(nextAddr + chain.Offsets[i]);
                 }
 
                 return currentAddress;
@@ -1262,10 +1271,10 @@ namespace UniversalFearRPC
             {
                 string level = ReadString(levelAddress, MAX_LEVEL_NAME_LENGTH, Encoding.ASCII);
 
-                if (string.IsNullOrEmpty(level) || level.Contains("\0"))
-                    level = "Меню";
+                if (string.IsNullOrWhiteSpace(level) || level.IndexOf('\0') >= 0)
+                    level = MENU_LABEL;
 
-                isMenu = level == "Меню" || !level.EndsWith(".World00p");
+                isMenu = level == MENU_LABEL || !level.EndsWith(".World00p", StringComparison.OrdinalIgnoreCase);
                 return level;
             }
             catch
@@ -1317,22 +1326,78 @@ namespace UniversalFearRPC
             }
         }
 
+        /// <summary>
+        /// Читает сырые байты из целевого процесса.
+        /// Возвращает null при ошибке.
+        /// </summary>
+        static byte[] ReadBytes(IntPtr address, int size)
+        {
+            if (address == IntPtr.Zero || hProcess == IntPtr.Zero || size <= 0)
+                return null;
+
+            byte[] buffer = new byte[size];
+            int bytesRead;
+
+            if (ReadProcessMemory(hProcess, address, buffer, size, out bytesRead) && bytesRead > 0)
+            {
+                if (bytesRead == size)
+                    return buffer;
+
+                var actual = new byte[bytesRead];
+                Array.Copy(buffer, actual, bytesRead);
+                return actual;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Проходит по цепочке указателей (base + offsets) и возвращает конечный адрес.
+        /// Метод корректно работает на 32- и 64-битных процессах.
+        /// </summary>
+        static IntPtr FollowPointerChain(PointerChain chain)
+        {
+            if (chain.BaseAddress == IntPtr.Zero)
+                return IntPtr.Zero;
+
+            try
+            {
+                IntPtr currentAddress = chain.BaseAddress;
+                int pointerSize = IntPtr.Size;
+
+                for (int i = 0; i < chain.Offsets.Length; i++)
+                {
+                    var buffer = ReadBytes(currentAddress, pointerSize);
+                    if (buffer == null || buffer.Length < pointerSize)
+                        return IntPtr.Zero;
+
+                    long nextAddr = pointerSize == 8 ? BitConverter.ToInt64(buffer, 0) : BitConverter.ToInt32(buffer, 0);
+                    if (nextAddr == 0)
+                        return IntPtr.Zero;
+
+                    currentAddress = new IntPtr(nextAddr + chain.Offsets[i]);
+                }
+
+                return currentAddress;
+            }
+            catch
+            {
+                return IntPtr.Zero;
+            }
+        }
+
         static string ReadString(IntPtr address, int maxLength, Encoding encoding)
         {
             if (address == IntPtr.Zero)
-                return "";
+                return string.Empty;
 
-            byte[] buffer = new byte[maxLength];
-            int bytesRead;
+            var bytes = ReadBytes(address, maxLength);
+            if (bytes == null || bytes.Length == 0)
+                return string.Empty;
 
-            if (ReadProcessMemory(hProcess, address, buffer, buffer.Length, out bytesRead) && bytesRead > 0)
-            {
-                string result = encoding.GetString(buffer, 0, bytesRead);
-                int nullIndex = result.IndexOf('\0');
-                return nullIndex >= 0 ? result.Substring(0, nullIndex) : result.TrimEnd('\0');
-            }
-
-            return "";
+            string result = encoding.GetString(bytes, 0, bytes.Length);
+            int nullIndex = result.IndexOf('\0');
+            return nullIndex >= 0 ? result.Substring(0, nullIndex) : result.TrimEnd('\0');
         }
 
         static float ReadFloat(IntPtr address)
@@ -1340,15 +1405,11 @@ namespace UniversalFearRPC
             if (address == IntPtr.Zero)
                 return 0f;
 
-            byte[] buffer = new byte[4];
-            int bytesRead;
+            var bytes = ReadBytes(address, 4);
+            if (bytes == null || bytes.Length < 4)
+                return 0f;
 
-            if (ReadProcessMemory(hProcess, address, buffer, 4, out bytesRead) && bytesRead == 4)
-            {
-                return BitConverter.ToSingle(buffer, 0);
-            }
-
-            return 0f;
+            return BitConverter.ToSingle(bytes, 0);
         }
 
         static int ReadInt(IntPtr address)
@@ -1356,15 +1417,11 @@ namespace UniversalFearRPC
             if (address == IntPtr.Zero)
                 return 0;
 
-            byte[] buffer = new byte[4];
-            int bytesRead;
+            var bytes = ReadBytes(address, 4);
+            if (bytes == null || bytes.Length < 4)
+                return 0;
 
-            if (ReadProcessMemory(hProcess, address, buffer, 4, out bytesRead) && bytesRead == 4)
-            {
-                return BitConverter.ToInt32(buffer, 0);
-            }
-
-            return 0;
+            return BitConverter.ToInt32(bytes, 0);
         }
 
         // ================= ОБРАБОТКА ИГРОВЫХ ДАННЫХ =================
@@ -1705,43 +1762,30 @@ namespace UniversalFearRPC
             Console.ForegroundColor = ConsoleColor.DarkGray;
             Console.WriteLine($"{"",-60}");
             Console.WriteLine($"┌────────────────────────────────────────────────────────┐");
-            Console.Write($"│ Игра: ");
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.Write($"{GetGameTitle(),-20}");
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.Write($" Уровень: ");
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.Write($"{level,-20}");
-            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Write("│ Игра: ");
+            WriteColored($"{GetGameTitle(),-20}", ConsoleColor.Cyan);
+            Console.Write(" Уровень: ");
+            WriteColored($"{level,-20}", ConsoleColor.White);
             Console.WriteLine(" │");
 
             if (!isMultiplayer && health > 0)
             {
-                Console.Write($"│ Здоровье: ");
-                Console.ForegroundColor = GetHealthColor(health);
-                string healthRange = GetCurrentHealthMax().ToString("F0");
-                Console.Write($"{health,5:F1}/{healthRange} HP");
-                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write("│ Здоровье: ");
+                WriteColored($"{health,5:F1}/{GetCurrentHealthMax():F0} HP", GetHealthColor(health));
                 Console.WriteLine($"{"",35} │");
             }
 
             if (currentLevelInfo != null && currentLevelInfo.Episode > 0)
             {
                 Console.Write($"│ Эпизод: ");
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.Write($"{currentLevelInfo.Episode:00} - {currentLevelInfo.EpisodeName}");
-                Console.ForegroundColor = ConsoleColor.DarkGray;
+                WriteColored($"{currentLevelInfo.Episode:00} - {currentLevelInfo.EpisodeName}", ConsoleColor.Yellow);
                 Console.WriteLine($"{"",30} │");
             }
 
-            Console.Write($"│ Режим: ");
-            Console.ForegroundColor = isMultiplayer ? ConsoleColor.Yellow : ConsoleColor.Green;
-            Console.Write($"{(isMultiplayer ? "Мультиплеер" : "Одиночная")}");
-            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Write("│ Режим: ");
+            WriteColored($"{(isMultiplayer ? "Мультиплеер" : "Одиночная")}", isMultiplayer ? ConsoleColor.Yellow : ConsoleColor.Green);
             Console.Write($"{"",15} Процесс: ");
-            Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.Write($"{gameProcess?.ProcessName ?? "Не найден",-15}");
-            Console.ForegroundColor = ConsoleColor.DarkGray;
+            WriteColored($"{gameProcess?.ProcessName ?? "Не найден",-15}", ConsoleColor.Magenta);
             Console.WriteLine(" │");
 
             // Время игры (с момента запуска процесса)
@@ -1900,6 +1944,23 @@ namespace UniversalFearRPC
             return $"0x{address.ToInt64():X}";
         }
 
+        // Утилита для удобной цветной печати
+        static void WriteColored(string text, ConsoleColor color)
+        {
+            var prev = Console.ForegroundColor;
+            Console.ForegroundColor = color;
+            Console.Write(text);
+            Console.ForegroundColor = prev;
+        }
+
+        static void WriteLineColored(string text, ConsoleColor color)
+        {
+            var prev = Console.ForegroundColor;
+            Console.ForegroundColor = color;
+            Console.WriteLine(text);
+            Console.ForegroundColor = prev;
+        }
+
         static void Cleanup()
         {
             if (hProcess != IntPtr.Zero)
@@ -1974,6 +2035,16 @@ namespace UniversalFearRPC
         {
             Console.ForegroundColor = ConsoleColor.DarkGray;
             Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] DEBUG: {message}");
+            Console.ResetColor();
+        }
+
+        /// <summary>
+        /// Печатает информацию об исключении в консоль в едином формате.
+        /// </summary>
+        static void LogException(Exception ex, string context = "")
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] EXC: {context} {ex.GetType().Name}: {ex.Message}");
             Console.ResetColor();
         }
 
