@@ -683,19 +683,7 @@ namespace UniversalFearRPC
                     }
                 }
 
-                using (var writer = new BinaryWriter(File.Open(SESSION_FILE, FileMode.Create)))
-                {
-                    writer.Write(currentSession.GameStartTime.ToBinary());
-                    writer.Write(currentSession.SessionStartTime.ToBinary());
-                    writer.Write(currentSession.ProcessId);
-                    writer.Write(currentSession.ProcessName ?? "");
-                    writer.Write(currentSession.LastLevel ?? "");
-                    writer.Write(currentSession.DeathCount);
-                    writer.Write(currentSession.ImageIndex);
-                    writer.Write(currentSession.IsMultiplayer);
-                    writer.Write(currentSession.GameVersion ?? "");
-                    writer.Write(currentSession.ProcessStartTime.ToBinary());
-                }
+                SessionManager.Save(SESSION_FILE, currentSession);
 
                 lastSaveTime = DateTime.UtcNow;
                 LogDebug("Сессия сохранена");
@@ -710,56 +698,25 @@ namespace UniversalFearRPC
         {
             try
             {
-                if (!File.Exists(SESSION_FILE))
+                var (session, wasTooOld) = SessionManager.Load(SESSION_FILE, settings.MaxSessionAgeHours);
+                currentSession = session;
+
+                // Восстанавливаем данные
+                deathCount = currentSession.DeathCount;
+                currentImageIndex = currentSession.ImageIndex;
+                isMultiplayer = currentSession.IsMultiplayer;
+                currentGameVersion = currentSession.GameVersion;
+
+                if (wasTooOld)
                 {
-                    currentSession = new SessionData
-                    {
-                        GameStartTime = DateTime.UtcNow,
-                        SessionStartTime = DateTime.UtcNow,
-                        ProcessStartTime = DateTime.UtcNow
-                    };
-                    return;
+                    LogInfo("Сессия слишком старая, начинаем новую");
                 }
-
-                using (var reader = new BinaryReader(File.Open(SESSION_FILE, FileMode.Open)))
+                else
                 {
-                    currentSession = new SessionData
-                    {
-                        GameStartTime = DateTime.FromBinary(reader.ReadInt64()),
-                        SessionStartTime = DateTime.FromBinary(reader.ReadInt64()),
-                        ProcessId = reader.ReadInt32(),
-                        ProcessName = reader.ReadString(),
-                        LastLevel = reader.ReadString(),
-                        DeathCount = reader.ReadInt32(),
-                        ImageIndex = reader.ReadInt32(),
-                        IsMultiplayer = reader.ReadBoolean(),
-                        GameVersion = reader.ReadString(),
-                        ProcessStartTime = DateTime.FromBinary(reader.ReadInt64())
-                    };
-
-                    // Восстанавливаем данные
-                    deathCount = currentSession.DeathCount;
-                    currentImageIndex = currentSession.ImageIndex;
-                    isMultiplayer = currentSession.IsMultiplayer;
-                    currentGameVersion = currentSession.GameVersion;
-
-                    // Проверяем, не слишком ли старая сессия
                     var sessionAge = DateTime.UtcNow - currentSession.SessionStartTime;
-                    if (sessionAge.TotalHours > settings.MaxSessionAgeHours)
-                    {
-                        LogInfo("Сессия слишком старая, начинаем новую");
-                        currentSession.GameStartTime = DateTime.UtcNow;
-                        currentSession.SessionStartTime = DateTime.UtcNow;
-                        currentSession.ProcessStartTime = DateTime.UtcNow;
-                        deathCount = 0;
-                        currentImageIndex = 0;
-                    }
-                    else
-                    {
-                        LogSuccess($"Сессия восстановлена (возраст: {sessionAge.TotalMinutes:F0} минут)");
-                        LogInfo($"Версия игры: {currentSession.GameVersion}");
-                        LogInfo($"Время запуска процесса: {currentSession.ProcessStartTime:HH:mm:ss}");
-                    }
+                    LogSuccess($"Сессия восстановлена (возраст: {sessionAge.TotalMinutes:F0} минут)");
+                    LogInfo($"Версия игры: {currentSession.GameVersion}");
+                    LogInfo($"Время запуска процесса: {currentSession.ProcessStartTime:HH:mm:ss}");
                 }
             }
             catch (Exception ex)
