@@ -1,4 +1,4 @@
-# F.E.A.R. Discord RPC
+# F.E.A.R. Discord RPC | [ENG?](https://github.com/assBuk/F.E.A.R.-Discord-RPC/blob/main/README_EN.md)
 
 Простая программа, которая отображает текущий уровень и эпизод из игры **F.E.A.R. (первая часть)** в статусе Discord.
 
