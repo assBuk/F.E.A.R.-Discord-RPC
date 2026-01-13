@@ -866,37 +866,11 @@ namespace UniversalFearRPC
         /// </summary>
         static bool FindGameProcess()
         {
-            Process targetProcess = null;
-            string detectedVersion = "FEAR";
-            bool detectedMultiplayer = false;
+            string detectedVersion;
+            bool detectedMultiplayer;
+            DateTime foundStartTime;
 
-            // Ищем все процессы из настроек
-            foreach (var kvp in settings.ProcessNames)
-            {
-                var processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(kvp.Value));
-                if (processes.Length > 0)
-                {
-                    targetProcess = processes[0];
-                    detectedVersion = kvp.Key;
-
-                    // Исправленная проверка на мультиплеер
-                    detectedMultiplayer = kvp.Key.IndexOf("MP", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                    // Получаем время запуска процесса
-                    try
-                    {
-                        processStartTime = GetProcessStartTime(targetProcess);
-                        LogInfo($"Процесс {targetProcess.ProcessName} запущен: {processStartTime:HH:mm:ss}");
-                    }
-                    catch (Exception ex)
-                    {
-                        LogWarning($"Не удалось получить время запуска процесса: {ex.Message}");
-                        processStartTime = DateTime.UtcNow;
-                    }
-
-                    break;
-                }
-            }
+            var targetProcess = ProcessManager.FindTargetProcess(settings, out detectedVersion, out detectedMultiplayer, out foundStartTime);
 
             if (targetProcess != gameProcess)
             {
@@ -907,8 +881,9 @@ namespace UniversalFearRPC
                 }
 
                 gameProcess = targetProcess;
-                currentGameVersion = detectedVersion;
+                currentGameVersion = detectedVersion ?? currentGameVersion;
                 isMultiplayer = detectedMultiplayer;
+                processStartTime = foundStartTime;
 
                 // Сброс адресов при смене процесса
                 levelAddress = IntPtr.Zero;
@@ -951,12 +926,11 @@ namespace UniversalFearRPC
             }
 
             // Открываем процесс с правами для чтения памяти
-            hProcess = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, false, gameProcess.Id);
+            hProcess = ProcessManager.OpenProcessForRead(gameProcess.Id);
 
             if (hProcess == IntPtr.Zero)
             {
-                int error = Marshal.GetLastWin32Error();
-                LogError($"Не удалось открыть процесс {gameProcess.ProcessName}. Ошибка: {error}");
+                LogError($"Не удалось открыть процесс {gameProcess.ProcessName}.");
                 return false;
             }
 
@@ -1613,7 +1587,7 @@ namespace UniversalFearRPC
                 // Пытаемся получить время запуска процесса сейчас
                 try
                 {
-                    startTime = GetProcessStartTime(gameProcess);
+                    startTime = ProcessManager.GetProcessStartTime(gameProcess);
                 }
                 catch
                 {
