@@ -141,7 +141,7 @@ namespace UniversalFearRPC
 
         // ================= СОСТОЯНИЕ ПРОГРАММЫ =================
         private static Dictionary<string, LevelInfo> levelDatabase;
-        private static DiscordRpcClient discordClient;
+        private static DiscordManager discordManager;
         private static SessionData currentSession;
         private static AppSettings settings = new AppSettings();
 
@@ -752,14 +752,8 @@ namespace UniversalFearRPC
         {
             try
             {
-                discordClient = new DiscordRpcClient(settings.DiscordAppId);
-
-                discordClient.OnReady += (sender, e) => { LogSuccess($"Discord RPC подключен: {e.User.Username}"); };
-
-                discordClient.OnError += (sender, e) => { LogError($"Discord ошибка: {e.Message}"); };
-
-                discordClient.Initialize();
-                LogInfo("Discord RPC инициализирован");
+                discordManager = new DiscordManager(settings.DiscordAppId);
+                discordManager.Initialize();
             }
             catch (Exception ex)
             {
@@ -1520,7 +1514,7 @@ namespace UniversalFearRPC
         // ================= DISCORD STATUS =================
         static void UpdateDiscordStatus(string levelName, float health, int deaths)
         {
-            if (discordClient == null || !discordClient.IsInitialized)
+            if (discordManager == null || !discordManager.IsInitialized)
                 return;
 
             var presence = new RichPresence();
@@ -1665,7 +1659,7 @@ namespace UniversalFearRPC
                 presence.Buttons = buttons.ToArray();
             }
 
-            discordClient.SetPresence(presence);
+            discordManager.SetPresence(presence);
         }
 
         static string GetGameTitle()
@@ -2058,10 +2052,10 @@ namespace UniversalFearRPC
             SaveSession();
 
             // Очищаем Discord RPC
-            if (discordClient != null)
+            if (discordManager != null)
             {
-                discordClient.ClearPresence();
-                discordClient.Dispose();
+                discordManager.ClearAndDispose();
+                discordManager = null;
             }
 
             // Освобождаем чтение памяти (MemoryReader закроет хэндл)
